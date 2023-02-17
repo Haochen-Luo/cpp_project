@@ -16,3 +16,5 @@
 ### when to use or not use
 - If you don't want to worry about calling delete, (and the potential to cause memory leaks) you shouldn't use new.
 - If you'd like to return a pointer to your object from a function, you must use new
+
+https://stackoverflow.com/questions/655065/when-should-i-use-the-new-keyword-in-c
