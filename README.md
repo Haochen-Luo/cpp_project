@@ -22,7 +22,7 @@ https://stackoverflow.com/questions/655065/when-should-i-use-the-new-keyword-in-
 ## difference between :: and .
 - :: (scope resolution) can be used to access something further in a namespace like a nested class, or to access a static function. 
 - The . period operator will simply access any visible member of the class instance you're using it on.
-- 总结一下::针对作用域消解(嵌套类)，或者static function，然而.是一个class instance 使用的
+- 总结一下::针对作用域消解(嵌套类)，或者static function，然而 . 是一个class instance 使用的
 
 ```cpp
 class A {
