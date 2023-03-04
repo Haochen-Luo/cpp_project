@@ -13,16 +13,18 @@
 BufMgr::BufMgr( int bufSize )
 {
 	
+	//TODO: add your code here
 	frames = new Frame*[bufSize];
 	for(int i = 0;i<bufSize;i++){
 		frames[i] = new Frame();
 		
 	}
+	hashmap = new unordered_map<int,int>();
 	numOfBuf = bufSize;
 	// cout<<totalHit<<endl;
-	// totalHit = 0; 
-	// totalCall = 0; 
-	// numDirtyPageWrites = 0;
+	totalHit = 0; 
+	totalCall = 0; 
+	numDirtyPageWrites = 0;
 	/**
 	 TODO: check if this is correct or not
 	 not correct!!!!
@@ -33,8 +35,8 @@ BufMgr::BufMgr( int bufSize )
 	 */
 	
 	replacer = new Clock(bufSize,frames,hashmap);
-	cout<<replacer<<"buf size"<<bufSize<<endl; 
-	//TODO: add your code here
+	// cout<<replacer<<"buf size"<<bufSize<<endl;  
+	
 }
 
 
@@ -53,6 +55,7 @@ BufMgr::~BufMgr()
 	}
 	delete[] frames;
 	delete replacer;
+	delete hashmap;
 	//TODO: add your code here
 }
 
@@ -80,40 +83,80 @@ BufMgr::~BufMgr()
 Status BufMgr::PinPage(PageID pid, Page*& page, bool isEmpty)
 {
 	//TODO: add your code here
-	// totalCall++;
+	totalCall++;
 	int fNo = FindFrame(pid);
-	cout<<"pin"<<endl;
+	// cout<<"pin"<<pid<<endl;
+
+	
 	if(fNo!=INVALID_FRAME){
-		// totalHit++;
+		cout<<"already in buffer"<<endl;
+		totalHit++;
 		frames[fNo]->Pin();
 		page = frames[fNo]->GetPage(); // output from buffer
+		// cout<<"show what is in hashmap"<<endl;
+		// for(const auto& p:(*hashmap)){
+		// 	if(frames[p.second]->GetPinCount()>1){
+		// 		cout<<"****************"<<endl;
+		// 	}
+		// 	cout<<p.first<<" "<<p.second<<" "<<frames[p.second]->GetPinCount()<<endl;
+		// }
 		return OK;
 	}else{
-		cout<<"try to find one"<<endl;
+		// cout<<"try to find one"<<endl;
+		// cout<<pid<<"not in  buffer"<<endl;
+		// cout<<"why fail, show what is in hashmap"<<endl;
+			// for(const auto& p:(*hashmap)){
+				// cout<<p.first<<" "<<p.second<<endl;
+			// }
 		fNo = replacer->PickVictim();
-		cout<<"fNo-"<<fNo<<endl;
+		// cout<<"fNo-"<<fNo<<endl;
 		if(fNo!=INVALID_FRAME){
-			hashmap[pid] = fNo;
+			// cout<<"line96"<<endl;
+			(*hashmap)[pid] = fNo;
+			// cout<<"put"<<pid<<"in the buffer"<<endl;
+			// cout<<"show what is in hashmap"<<endl;
+			// for(const auto& p:(*hashmap)){
+				// cout<<p.first<<" "<<p.second<<endl;
+			// }
+			// cout<<"line98"<<numOfBuf<<endl;
 			frames[fNo]->SetPageID(pid);
+			// cout<<"line100"<<endl;
 		}else{
-			cout<<"fail to find a available page to pin"<<endl;
+			// cout<<"fail to find a available page to pin"<<endl;
 			page = NULL;
 			return FAIL;
 		}
-		cout<<"write it if necessary"<<endl;
-		if(!isEmpty){			
-			Status s = MINIBASE_DB->ReadPage(pid,page);
-			if(s!=OK){
-				page = NULL;
-				return s;
-			}					
+		
+		if(!isEmpty){	
+			// cout<<"non empty"<<endl;
+			/**
+			 * TODO:
+			 * 
+			 */
+			
+			frames[fNo]->Read(pid);
+			// Status s = MINIBASE_DB->ReadPage(pid,page);
+
+			// if(s!=OK){
+			// 	page = NULL;
+			// 	return s;
+			// }					
 		}else{
-			cout<<"actucally it is empty"<<endl;
+			// cout<<"testing"<<endl;
+			frames[fNo]->SetPageID(pid);
+			// cout<<"actucally it is empty"<<endl;
 		}
-		cout<<"***fNo is pinned"<<fNo<<endl;
+		// cout<<"***** fNo is pinned"<<fNo<<endl;
 		page = frames[fNo]->GetPage();
-		cout<<page<<endl;
+		// cout<<page<<endl;
 		frames[fNo]->Pin();
+		/**TODO: CORRECTED BUG*/
+		(*hashmap)[pid] = fNo;
+		// for(const auto& p:(*hashmap)){
+			// cout<<pid<<" "<<p.first<<" "<<p.second<<endl;
+		// }
+
+		
 		return OK;
 	}
 	
@@ -138,14 +181,37 @@ Status BufMgr::PinPage(PageID pid, Page*& page, bool isEmpty)
 Status BufMgr::UnpinPage(PageID pid, bool dirty)
 {
 	//TODO: add your code here
-	if(!hashmap.count(pid)||frames[hashmap[pid]]->NotPinned()){
-		
+	// cout<<"unpin"<<pid<<endl;
+	if(!(*hashmap).count(pid)){
 		return FAIL;
 	}
-	int fNo = hashmap[pid];
+	if(frames[(*hashmap)[pid]]->NotPinned()){
+		return FAIL;
+	}
+	int fNo = (*hashmap)[pid];
 	if(dirty){
 		frames[fNo]->DirtyIt();
 	}
+	if(frames[fNo]->GetPinCount()>1){
+		cout<<"\n\n winnnnnnnnnnnnnnnn \n\n\n"<<frames[fNo]->GetPageID()<<" "<<frames[fNo]->GetPinCount()<<endl;
+	}
+	frames[fNo]->Unpin();
+	if(frames[fNo]->NotPinned()){
+		(*hashmap).erase(pid);
+	}else{
+		/*strange bug, if I call (*hashmap).erase(pid); directly without checking NotPinned(), it would lead to unexpected fail
+		*** Unexpected error(s) logged, test failed:
+		First error occurred: --> DB Manager[from the <<Unknown>>]: /home/scratch/teaching/dsi-ht12/minibase/trunk/minibase-complete/spacemgr/db.cpp:609
+
+		Moreover, it would lead to the effect that the flushing all fail because page 4 is still pineed
+
+		
+		*/
+		cout<<frames[fNo]->GetPageID()<<" "<<pid<<endl;
+		cout<<"not erasing!"<<endl;
+	}
+	// (*hashmap).erase(pid);
+	
 	return OK;
 }
 
@@ -173,15 +239,23 @@ Status BufMgr::UnpinPage(PageID pid, bool dirty)
 Status BufMgr::NewPage(PageID& firstPid, Page*& firstPage, int howMany)
 {
 	//TODO: add your code here
-	if(howMany<0){
+	if(howMany<=0){
 		return FAIL;
 	}
-	MINIBASE_DB->AllocatePage(firstPid,howMany);
-	Status s = PinPage(firstPid,firstPage);
+	Status s = MINIBASE_DB->AllocatePage(firstPid,howMany);
+	if(s!=OK){
+		cout<<"allocate fail!"<<endl;
+		return FAIL;
+	}
+	// cout<<"allocate successfully!"<<endl;
+	s = PinPage(firstPid,firstPage);
 	if(s!=OK){ 
+		cout<<"fail to pin"<<endl;
 		MINIBASE_DB->DeallocatePage(firstPid,howMany);
+		return FAIL;
 	}else{
-		firstPage = frames[hashmap[firstPid]]->GetPage();
+		// cout<<(*hashmap)[firstPid]<<endl;
+		firstPage = frames[(*hashmap)[firstPid]]->GetPage();
 		return OK;
 	}
 	
@@ -208,11 +282,20 @@ Status BufMgr::NewPage(PageID& firstPid, Page*& firstPage, int howMany)
 Status BufMgr::FreePage(PageID pid)
 {
 	//TODO: add your code here
-	if(hashmap.count(pid)){
-		Frame* f = frames[hashmap[pid]]; 
+	
+	if((*hashmap).count(pid)){ //check if in the buffer
+		
+		Frame* f = frames[(*hashmap)[pid]]; 
+		if(f->GetPinCount()>1){
+			return FAIL;
+		}
+		// f->SetReferenced(0);
 		f->EmptyIt();
+		hashmap->erase(pid);
 	}
-	MINIBASE_DB->DeallocatePage(pid);
+	Status s = MINIBASE_DB->DeallocatePage(pid);
+	
+
 	return OK;
 }
 
@@ -234,8 +317,8 @@ Status BufMgr::FreePage(PageID pid)
 Status BufMgr::FlushPage(PageID pid)
 {
 	//TODO: add your code here
-	if(hashmap.count(pid)&&pid!=INVALID_PAGE){   
-		Frame* f = frames[hashmap[pid]]; 
+	if((*hashmap).count(pid)&&pid!=INVALID_PAGE){   
+		Frame* f = frames[(*hashmap)[pid]]; 
 		if(f->NotPinned()){
 			if(f->IsDirty()){
 				Status s = f->Write();
@@ -245,6 +328,7 @@ Status BufMgr::FlushPage(PageID pid)
 				numDirtyPageWrites++;
 			}
 			f->EmptyIt();
+			(*hashmap).erase(pid);   
 			return OK;
 		}
 	}
@@ -271,8 +355,8 @@ Status BufMgr::FlushAllPages()
 	for(int i =0;i<numOfBuf;i++){
 		Frame* f = frames[i];
 		if(!f->NotPinned()){
-
-			cout<<"the page"<<i<<" is still pined"<<endl;
+			
+			cout<<"the page"<<f->GetPageID()<<" is still pined"<<endl;
 			return FAIL;
 		}
 		if(f->IsDirty()){
@@ -282,8 +366,10 @@ Status BufMgr::FlushAllPages()
 			}
 			numDirtyPageWrites++;
 		}
+
 		f->EmptyIt();
 	}
+	(*hashmap).clear();
 	return OK;
 }
 
@@ -317,6 +403,7 @@ void  BufMgr::PrintStat() {
 	cout<<"Number of Dirty Pages Written to Disk: "<<numDirtyPageWrites<<endl;
 	cout<<"Number of Pin Page Requests: "<<totalCall<<endl;
 	cout<<"Number of Pin Page Request Misses "<<totalCall-totalHit<<endl;
+	cout<<"Number of Pin Page Request Misses "<<totalHit<<endl;
 }
 
 //--------------------------------------------------------------------
@@ -334,8 +421,8 @@ void  BufMgr::PrintStat() {
 int BufMgr::FindFrame( PageID pid )
 {
 	//TODO: add your code here
-	if(hashmap.count(pid)){
-		return hashmap[pid];
+	if((*hashmap).count(pid)){
+		return (*hashmap)[pid];
 	}else{
 		return INVALID_FRAME;
 	}
